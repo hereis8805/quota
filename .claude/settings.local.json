@@ -9,7 +9,12 @@
       "Bash(rm -rf \"C:/JSP/_2026/routine/quota-app\")",
       "Bash(cp -r \"C:/JSP/_2026/routine/quota-app/src\" \"C:/JSP/_2026/routine/quota/\")",
       "Bash(npm install:*)",
-      "Bash(npx shadcn@latest init --yes --defaults)"
+      "Bash(npx shadcn@latest init --yes --defaults)",
+      "Bash(npx shadcn@latest add dialog card badge separator)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(npx shadcn@latest add input switch)"
     ]
   }
 }
