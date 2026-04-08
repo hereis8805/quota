@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack --force)",
+      "Read(//c/JSP/_2026/routine/**)",
+      "Bash(npx create-next-app@latest quota-app --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack)",
+      "Bash(cp -r \"C:/JSP/_2026/routine/quota-app/.\" \"C:/JSP/_2026/routine/quota/\")",
+      "Bash(rm -rf \"C:/JSP/_2026/routine/quota-app\")",
+      "Bash(cp -r \"C:/JSP/_2026/routine/quota-app/src\" \"C:/JSP/_2026/routine/quota/\")",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init --yes --defaults)"
+    ]
+  }
+}
