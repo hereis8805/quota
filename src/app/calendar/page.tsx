@@ -8,8 +8,9 @@ interface Props {
 
 export default async function CalendarPage({ searchParams }: Props) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) redirect('/login')
+  const user = session.user
 
   const params = await searchParams
   const now = new Date()

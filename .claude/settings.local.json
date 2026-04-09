@@ -14,7 +14,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm run:*)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
-      "Bash(npx shadcn@latest add input switch)"
+      "Bash(npx shadcn@latest add input switch)",
+      "Bash(node -e \"const p = require\\('./node_modules/next/package.json'\\); console.log\\(p.version\\)\")"
     ]
   }
 }

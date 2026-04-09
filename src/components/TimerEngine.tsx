@@ -19,10 +19,18 @@ export function TimerEngine() {
         playBeep(phase === 'work' ? 880 : 440, 0.4)
 
         if (phase === 'work') {
-          // 운동 종료 → 세트 카운트 증가 + 휴식 자동 시작
+          // 운동 종료 → 세트 카운트 증가
           store.incrementSetCount()
-          worker.postMessage({ type: 'START', payload: { seconds: store.restSec, phase: 'rest' } })
-          useTimerStore.setState({ phase: 'rest', state: 'running', remaining: store.restSec })
+          const { setCount: newSetCount, totalSets, restSec } = useTimerStore.getState()
+
+          if (totalSets > 0 && newSetCount >= totalSets) {
+            // 마지막 세트 완료 → 휴식 없이 종료
+            useTimerStore.setState({ phase: 'idle', state: 'stopped' })
+          } else {
+            // 휴식 자동 시작
+            worker.postMessage({ type: 'START', payload: { seconds: restSec, phase: 'rest' } })
+            useTimerStore.setState({ phase: 'rest', state: 'running', remaining: restSec })
+          }
         } else if (phase === 'rest') {
           // 휴식 종료 → 운동 자동 시작
           worker.postMessage({ type: 'START', payload: { seconds: store.workSec, phase: 'work' } })

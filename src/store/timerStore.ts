@@ -10,9 +10,10 @@ interface TimerStoreState {
   workSec: number
   restSec: number
   setCount: number
+  totalSets: number
   worker: Worker | null
 
-  init: (workSec: number, restSec: number) => void
+  init: (workSec: number, restSec: number, totalSets?: number) => void
   startWork: () => void
   pauseResume: () => void
   reset: () => void
@@ -27,14 +28,15 @@ export const useTimerStore = create<TimerStoreState>((set, get) => ({
   workSec: 30,
   restSec: 90,
   setCount: 0,
+  totalSets: 0,
   worker: null,
 
   _setWorker: (w) => set({ worker: w }),
 
-  init(workSec, restSec) {
+  init(workSec, restSec, totalSets = 0) {
     const { worker } = get()
     if (worker) worker.postMessage({ type: 'STOP' })
-    set({ workSec, restSec, phase: 'idle', state: 'stopped', remaining: workSec, setCount: 0 })
+    set({ workSec, restSec, totalSets, phase: 'idle', state: 'stopped', remaining: workSec, setCount: 0 })
   },
 
   startWork() {

@@ -133,15 +133,42 @@ export default function DashboardClient({ userId, today, exercises, logs: initia
     }, { onConflict: 'user_id,date' })
     setTotalScore(newTotal)
 
-    const { data: newEntry } = await supabase
-      .from('exercise_entries')
-      .select('id, exercise_id, reps, recorded_at')
-      .eq('user_id', userId).eq('exercise_id', selected.id).eq('date', today)
-      .order('recorded_at', { ascending: false }).limit(1).single()
-    if (newEntry) setEntries((prev) => [newEntry, ...prev])
-
     setRepsInput('1')
     setSaving(false)
+    setSelected(null)
+  }
+
+  async function handleDeleteEntry(entry: ExerciseEntry) {
+    if (!selected) return
+    const supabase = createClient()
+
+    await supabase.from('exercise_entries').delete().eq('id', entry.id)
+
+    const existingLog = getLog(selected.id)
+    const newReps = Math.max(0, (existingLog?.reps_done ?? 0) - entry.reps)
+    const newScore = newReps * selected.score_per_unit
+
+    let newLogs: DailyExerciseLog[]
+    if (newReps === 0) {
+      await supabase.from('daily_exercise_logs')
+        .delete().eq('user_id', userId).eq('exercise_id', selected.id).eq('date', today)
+      newLogs = logs.filter((l) => l.exercise_id !== selected.id)
+    } else {
+      await supabase.from('daily_exercise_logs')
+        .update({ reps_done: newReps, score_earned: newScore, updated_at: new Date().toISOString() })
+        .eq('user_id', userId).eq('exercise_id', selected.id).eq('date', today)
+      newLogs = logs.map((l) => l.exercise_id === selected.id ? { ...l, reps_done: newReps, score_earned: newScore } : l)
+    }
+    setLogs(newLogs)
+
+    const newTotal = newLogs.reduce((sum, l) => sum + l.score_earned, 0)
+    await supabase.from('daily_score_summary').upsert({
+      user_id: userId, date: today, total_score: newTotal,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,date' })
+    setTotalScore(newTotal)
+
+    setEntries((prev) => prev.filter((e) => e.id !== entry.id))
   }
 
   async function handleResetToday() {
@@ -286,7 +313,13 @@ export default function DashboardClient({ userId, today, exercises, logs: initia
                       {new Date(entry.recorded_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <span className="font-semibold">{entry.reps}회</span>
-                    {i === 0 && <span className="text-xs text-zinc-600">최근</span>}
+                    <div className="flex items-center gap-2">
+                      {i === 0 && <span className="text-xs text-zinc-600">최근</span>}
+                      <button
+                        className="text-zinc-600 hover:text-red-400 text-lg leading-none transition-colors"
+                        onClick={() => handleDeleteEntry(entry)}
+                      >×</button>
+                    </div>
                   </div>
                 ))}
               </div>

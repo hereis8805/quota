@@ -50,5 +50,15 @@ export interface SetDetail {
   recorded_at: string
 }
 
+export interface TimerPreset {
+  id: string
+  user_id: string
+  name: string
+  work_sec: number
+  rest_sec: number
+  reps: number
+  created_at: string
+}
+
 export type TimerPhase = 'idle' | 'work' | 'rest'
 export type TimerState = 'stopped' | 'running' | 'paused'

@@ -1,17 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTimerStore } from '@/store/timerStore'
 import { TimerEngine } from '@/components/TimerEngine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
-import type { WorkoutSettings } from '@/types'
+import type { TimerPreset, WorkoutSettings } from '@/types'
 import Link from 'next/link'
 
 interface Props {
   settings: WorkoutSettings | null
   userId: string
+  initialPresets: TimerPreset[]
 }
 
 function CircleTimer({
@@ -51,7 +52,6 @@ function CircleTimer({
           style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s ease' }}
         />
       </svg>
-
       <div className="absolute flex flex-col items-center gap-0.5">
         {setNum > 0 ? (
           <span className="font-bold leading-none" style={{ fontSize: 52, color: numColor }}>
@@ -68,18 +68,34 @@ function CircleTimer({
   )
 }
 
-export default function TimerPageClient({ settings, userId }: Props) {
+export default function TimerPageClient({ settings, userId, initialPresets }: Props) {
   const { phase, state, remaining, startWork, pauseResume, reset, init, workSec, restSec, setCount } =
     useTimerStore()
 
   const [localWork, setLocalWork] = useState(settings?.interval_work_sec ?? 30)
   const [localRest, setLocalRest] = useState(settings?.interval_rest_sec ?? 90)
   const [reps, setReps] = useState(10)
-  const [saved, setSaved] = useState(false)
+
+  const [presets, setPresets] = useState<TimerPreset[]>(initialPresets)
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
+
+  const [showSaveForm, setShowSaveForm] = useState(false)
+  const [saveNameInput, setSaveNameInput] = useState('')
+
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const editInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     init(localWork, localRest)
   }, []) // eslint-disable-line
+
+  useEffect(() => {
+    if (editingPresetId && editInputRef.current) {
+      editInputRef.current.focus()
+      editInputRef.current.select()
+    }
+  }, [editingPresetId])
 
   const getTotalSec = () => {
     if (phase === 'work') return workSec
@@ -87,18 +103,17 @@ export default function TimerPageClient({ settings, userId }: Props) {
     return workSec
   }
 
-  // 원 안에 표시할 세트 번호
-  // work 중: setCount + 1 (아직 완료 전)
-  // rest 중: setCount (방금 완료한 세트)
-  // idle: 0
   const displaySetNum = phase === 'work' ? setCount + 1 : phase === 'rest' ? setCount : 0
-
   const isRunning = state === 'running'
   const isIdle = phase === 'idle' && state === 'stopped'
 
   function handleMainBtn() {
-    if (isIdle) startWork()
-    else pauseResume()
+    if (isIdle) {
+      init(localWork, localRest, reps)
+      startWork()
+    } else {
+      pauseResume()
+    }
   }
 
   function handleReset() {
@@ -106,19 +121,43 @@ export default function TimerPageClient({ settings, userId }: Props) {
     init(localWork, localRest)
   }
 
-  async function handleSaveSettings() {
+  function handleSelectPreset(preset: TimerPreset) {
+    setSelectedPresetId(preset.id)
+    setLocalWork(preset.work_sec)
+    setLocalRest(preset.rest_sec)
+    setReps(preset.reps)
+  }
+
+  async function handleSavePreset() {
+    const name = saveNameInput.trim() || `루틴 ${presets.length + 1}`
     const supabase = createClient()
-    if (settings?.id) {
-      await supabase.from('workout_settings')
-        .update({ interval_work_sec: localWork, interval_rest_sec: localRest })
-        .eq('id', settings.id)
-    } else {
-      await supabase.from('workout_settings')
-        .insert({ user_id: userId, interval_work_sec: localWork, interval_rest_sec: localRest })
+    const { data } = await supabase
+      .from('timer_presets')
+      .insert({ user_id: userId, name, work_sec: localWork, rest_sec: localRest, reps })
+      .select()
+      .single()
+    if (data) {
+      setPresets((prev) => [...prev, data])
+      setSelectedPresetId(data.id)
     }
-    init(localWork, localRest)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    setShowSaveForm(false)
+    setSaveNameInput('')
+  }
+
+  async function handleRenamePreset(id: string) {
+    const name = editingName.trim()
+    if (!name) { setEditingPresetId(null); return }
+    const supabase = createClient()
+    await supabase.from('timer_presets').update({ name }).eq('id', id)
+    setPresets((prev) => prev.map((p) => p.id === id ? { ...p, name } : p))
+    setEditingPresetId(null)
+  }
+
+  async function handleDeletePreset(id: string) {
+    const supabase = createClient()
+    await supabase.from('timer_presets').delete().eq('id', id)
+    setPresets((prev) => prev.filter((p) => p.id !== id))
+    if (selectedPresetId === id) setSelectedPresetId(null)
   }
 
   const mainBtnClass = isIdle
@@ -126,7 +165,6 @@ export default function TimerPageClient({ settings, userId }: Props) {
     : isRunning
     ? 'bg-red-600 hover:bg-red-700'
     : 'bg-amber-500 hover:bg-amber-600'
-
   const mainBtnLabel = isIdle ? '시작' : isRunning ? '일시정지' : '재개'
 
   return (
@@ -191,10 +229,93 @@ export default function TimerPageClient({ settings, userId }: Props) {
         </div>
       </div>
 
+      {/* 세팅 저장 */}
       {isIdle && (
-        <Button variant="outline" className="w-full h-10 text-sm text-zinc-400" onClick={handleSaveSettings}>
-          {saved ? '저장됨 ✓' : '타이머 설정 저장'}
-        </Button>
+        <div className="flex flex-col gap-2">
+          {showSaveForm ? (
+            <div className="flex gap-2">
+              <Input
+                className="flex-1 h-9 text-sm"
+                placeholder={`루틴 ${presets.length + 1}`}
+                value={saveNameInput}
+                onChange={(e) => setSaveNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSavePreset() }}
+                autoFocus
+              />
+              <Button size="sm" className="h-9 bg-zinc-700 hover:bg-zinc-600" onClick={handleSavePreset}>저장</Button>
+              <Button size="sm" variant="ghost" className="h-9 text-zinc-500" onClick={() => { setShowSaveForm(false); setSaveNameInput('') }}>취소</Button>
+            </div>
+          ) : (
+            <Button variant="outline" className="w-full h-9 text-sm text-zinc-400 border-zinc-700"
+              onClick={() => { setShowSaveForm(true); setSaveNameInput('') }}>
+              + 세팅 저장하기
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* 프리셋 리스트 */}
+      {presets.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs text-zinc-500 px-1">저장된 루틴</p>
+          {presets.map((preset) => {
+            const isSelected = selectedPresetId === preset.id
+            const isEditing = editingPresetId === preset.id
+            return (
+              <div
+                key={preset.id}
+                className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-colors
+                  ${isSelected ? 'bg-zinc-700 ring-1 ring-zinc-500' : 'bg-zinc-900 hover:bg-zinc-800'}`}
+                onClick={() => { if (!isEditing) handleSelectPreset(preset) }}
+              >
+                {/* 선택 표시 */}
+                <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors
+                  ${isSelected ? 'border-green-400 bg-green-400' : 'border-zinc-600'}`} />
+
+                {/* 이름 + 세팅 정보 */}
+                <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      className="bg-transparent border-b border-zinc-500 text-sm font-semibold w-full outline-none text-white"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onBlur={() => handleRenamePreset(preset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenamePreset(preset.id)
+                        if (e.key === 'Escape') setEditingPresetId(null)
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm font-semibold truncate">{preset.name}</p>
+                  )}
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    운동 {preset.work_sec}초 · 휴식 {preset.rest_sec}초 · {preset.reps}회
+                  </p>
+                </div>
+
+                {/* 이름 편집 버튼 */}
+                {!isEditing ? (
+                  <button
+                    className="text-zinc-600 hover:text-zinc-300 text-sm shrink-0 px-0.5"
+                    onClick={(e) => { e.stopPropagation(); setEditingPresetId(preset.id); setEditingName(preset.name) }}
+                  >✏</button>
+                ) : (
+                  <button
+                    className="text-green-500 text-base shrink-0 px-0.5"
+                    onClick={(e) => { e.stopPropagation(); handleRenamePreset(preset.id) }}
+                  >✓</button>
+                )}
+
+                {/* 삭제 버튼 */}
+                <button
+                  className="text-zinc-600 hover:text-red-400 text-lg shrink-0 leading-none"
+                  onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id) }}
+                >×</button>
+              </div>
+            )
+          })}
+        </div>
       )}
 
       <Button size="lg" className={`w-full h-16 text-xl font-bold mt-auto ${mainBtnClass}`} onClick={handleMainBtn}>
