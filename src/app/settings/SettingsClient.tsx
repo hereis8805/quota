@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,6 @@ import Link from 'next/link'
 
 interface Props {
   userId: string
-  exercises: Exercise[]
 }
 
 const EMPTY_FORM = {
@@ -23,9 +22,21 @@ const EMPTY_FORM = {
   is_negative: false,
 }
 
-export default function SettingsClient({ userId, exercises: initialExercises }: Props) {
-  const router = useRouter()
-  const [exercises, setExercises] = useState(initialExercises)
+export default function SettingsClient({ userId }: Props) {
+  const { data: exercises = [], mutate, isLoading } = useSWR(
+    `settings-exercises-${userId}`,
+    async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('exercises')
+        .select('*')
+        .eq('user_id', userId)
+        .order('order_index', { ascending: true })
+      return data ?? []
+    },
+    { revalidateOnFocus: false }
+  )
+
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -76,33 +87,39 @@ export default function SettingsClient({ userId, exercises: initialExercises }: 
       const { data, error: err } = await supabase
         .from('exercises').update(payload).eq('id', editId).select().single()
       if (err) { setError(err.message); setSaving(false); return }
-      if (data) setExercises((prev) => prev.map((e) => (e.id === editId ? data : e)))
+      if (data) mutate(exercises.map((e) => (e.id === editId ? data : e)), false)
     } else {
       const { data, error: err } = await supabase
         .from('exercises')
         .insert({ ...payload, user_id: userId, order_index: exercises.length })
         .select().single()
       if (err) { setError(err.message); setSaving(false); return }
-      if (data) setExercises((prev) => [...prev, data])
+      if (data) mutate([...exercises, data], false)
     }
 
     setSaving(false)
     setShowForm(false)
     setEditId(null)
-    router.refresh()
   }
 
   async function handleDelete(id: string) {
     const supabase = createClient()
     await supabase.from('exercises').delete().eq('id', id)
-    setExercises((prev) => prev.filter((e) => e.id !== id))
-    router.refresh()
+    mutate(exercises.filter((e) => e.id !== id), false)
   }
 
   async function handleToggleActive(ex: Exercise) {
     const supabase = createClient()
     await supabase.from('exercises').update({ is_active: !ex.is_active }).eq('id', ex.id)
-    setExercises((prev) => prev.map((e) => e.id === ex.id ? { ...e, is_active: !e.is_active } : e))
+    mutate(exercises.map((e) => e.id === ex.id ? { ...e, is_active: !e.is_active } : e), false)
+  }
+
+  if (isLoading && exercises.length === 0) {
+    return (
+      <div className="min-h-screen max-w-md mx-auto flex items-center justify-center">
+        <p className="text-zinc-500 text-sm animate-pulse">로딩 중...</p>
+      </div>
+    )
   }
 
   return (

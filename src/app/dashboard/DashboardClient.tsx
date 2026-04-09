@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,16 +21,57 @@ interface ExerciseEntry {
 
 interface Props {
   userId: string
-  today: string
-  exercises: Exercise[]
-  logs: DailyExerciseLog[]
-  summary: DailyScoreSummary | null
 }
 
-export default function DashboardClient({ userId, today, exercises, logs: initialLogs, summary: initialSummary }: Props) {
+export default function DashboardClient({ userId }: Props) {
   const router = useRouter()
-  const [logs, setLogs] = useState<DailyExerciseLog[]>(initialLogs)
-  const [totalScore, setTotalScore] = useState(initialSummary?.total_score ?? 0)
+  const today = new Date().toISOString().split('T')[0]
+
+  const { data: dashData, isLoading } = useSWR(
+    `dashboard-${userId}-${today}`,
+    async () => {
+      const supabase = createClient()
+      const [exercisesRes, logsRes, summaryRes] = await Promise.all([
+        supabase
+          .from('exercises')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('order_index', { ascending: true }),
+        supabase
+          .from('daily_exercise_logs')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('date', today),
+        supabase
+          .from('daily_score_summary')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('date', today)
+          .maybeSingle(),
+      ])
+      return {
+        exercises: exercisesRes.data ?? [],
+        logs: logsRes.data ?? [],
+        summary: summaryRes.data ?? null,
+      }
+    },
+    { revalidateOnFocus: false }
+  )
+
+  const [logs, setLogs] = useState<DailyExerciseLog[]>([])
+  const [totalScore, setTotalScore] = useState(0)
+  const initialized = useRef(false)
+
+  useEffect(() => {
+    if (dashData && !initialized.current) {
+      setLogs(dashData.logs)
+      setTotalScore(dashData.summary?.total_score ?? 0)
+      initialized.current = true
+    }
+  }, [dashData])
+
+  const exercises: Exercise[] = dashData?.exercises ?? []
 
   const [selected, setSelected] = useState<Exercise | null>(null)
   const [entries, setEntries] = useState<ExerciseEntry[]>([])
@@ -191,6 +233,14 @@ export default function DashboardClient({ userId, today, exercises, logs: initia
   }
 
   const todayStr = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
+
+  if (isLoading && !dashData) {
+    return (
+      <div className="h-screen max-w-md mx-auto flex items-center justify-center">
+        <p className="text-zinc-500 text-sm animate-pulse">로딩 중...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="h-screen max-w-md mx-auto flex flex-col overflow-hidden">

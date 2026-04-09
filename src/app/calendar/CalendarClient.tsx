@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,11 +14,9 @@ interface LogEntry { date: string; exercise_id: string; reps_done: number; score
 interface ExerciseInfo { id: string; name: string; score_per_unit: number }
 
 interface Props {
+  userId: string
   year: number
   month: number
-  summaries: Summary[]
-  logs: LogEntry[]
-  exercises: ExerciseInfo[]
 }
 
 function getMarker(score: number): string {
@@ -33,9 +33,47 @@ function getMarkerColor(score: number): string {
   return 'text-green-400'
 }
 
-export default function CalendarClient({ year, month, summaries, logs, exercises }: Props) {
+export default function CalendarClient({ userId, year, month }: Props) {
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`
+  const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+
+  const { data, isLoading } = useSWR(
+    `calendar-${userId}-${year}-${month}`,
+    async () => {
+      const supabase = createClient()
+      const [summaryRes, logsRes, exercisesRes] = await Promise.all([
+        supabase
+          .from('daily_score_summary')
+          .select('date, total_score')
+          .eq('user_id', userId)
+          .gte('date', startDate)
+          .lte('date', endDate),
+        supabase
+          .from('daily_exercise_logs')
+          .select('date, exercise_id, reps_done, score_earned')
+          .eq('user_id', userId)
+          .gte('date', startDate)
+          .lte('date', endDate),
+        supabase
+          .from('exercises')
+          .select('id, name, score_per_unit')
+          .eq('user_id', userId),
+      ])
+      return {
+        summaries: summaryRes.data ?? [],
+        logs: logsRes.data ?? [],
+        exercises: exercisesRes.data ?? [],
+      }
+    },
+    { revalidateOnFocus: false }
+  )
+
+  const summaries: Summary[] = data?.summaries ?? []
+  const logs: LogEntry[] = data?.logs ?? []
+  const exercises: ExerciseInfo[] = data?.exercises ?? []
 
   const summaryMap = new Map(summaries.map((s) => [s.date, s]))
   const exerciseMap = new Map(exercises.map((e) => [e.id, e]))
@@ -80,35 +118,41 @@ export default function CalendarClient({ year, month, summaries, logs, exercises
       </div>
 
       {/* 날짜 그리드 */}
-      <div className="grid grid-cols-7 gap-1">
-        {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
-        {days.map((day) => {
-          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-          const summary = summaryMap.get(dateStr)
-          const isToday = dateStr === today
-          const score = summary?.total_score ?? null
+      {isLoading && summaries.length === 0 ? (
+        <div className="flex items-center justify-center py-20">
+          <p className="text-zinc-500 text-sm animate-pulse">로딩 중...</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-7 gap-1">
+          {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
+          {days.map((day) => {
+            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            const summary = summaryMap.get(dateStr)
+            const isToday = dateStr === today
+            const score = summary?.total_score ?? null
 
-          return (
-            <button
-              key={day}
-              onClick={() => score !== null && setSelectedDate(dateStr)}
-              className={`
-                flex flex-col items-center justify-center aspect-square rounded-lg text-sm gap-0.5
-                ${isToday ? 'ring-2 ring-blue-500' : ''}
-                ${score !== null ? 'bg-zinc-800 hover:bg-zinc-700 cursor-pointer' : 'bg-zinc-900 cursor-default'}
-              `}
-            >
-              <span className={`text-xs leading-none ${isToday ? 'text-blue-400 font-bold' : 'text-zinc-400'}`}>{day}</span>
-              {score !== null && (
-                <>
-                  <span className={`text-sm font-bold leading-none ${getMarkerColor(score)}`}>{getMarker(score)}</span>
-                  <span className={`text-[10px] leading-none ${getMarkerColor(score)}`}>{score > 0 ? '+' : ''}{score}</span>
-                </>
-              )}
-            </button>
-          )
-        })}
-      </div>
+            return (
+              <button
+                key={day}
+                onClick={() => score !== null && setSelectedDate(dateStr)}
+                className={`
+                  flex flex-col items-center justify-center aspect-square rounded-lg text-sm gap-0.5
+                  ${isToday ? 'ring-2 ring-blue-500' : ''}
+                  ${score !== null ? 'bg-zinc-800 hover:bg-zinc-700 cursor-pointer' : 'bg-zinc-900 cursor-default'}
+                `}
+              >
+                <span className={`text-xs leading-none ${isToday ? 'text-blue-400 font-bold' : 'text-zinc-400'}`}>{day}</span>
+                {score !== null && (
+                  <>
+                    <span className={`text-sm font-bold leading-none ${getMarkerColor(score)}`}>{getMarker(score)}</span>
+                    <span className={`text-[10px] leading-none ${getMarkerColor(score)}`}>{score > 0 ? '+' : ''}{score}</span>
+                  </>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* 범례 */}
       <div className="flex gap-3 mt-4 justify-center text-xs text-zinc-500 flex-wrap">

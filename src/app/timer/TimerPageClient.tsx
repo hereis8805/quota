@@ -1,18 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import useSWR from 'swr'
 import { useTimerStore } from '@/store/timerStore'
 import { TimerEngine } from '@/components/TimerEngine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
-import type { TimerPreset, WorkoutSettings } from '@/types'
+import type { TimerPreset } from '@/types'
 import Link from 'next/link'
 
 interface Props {
-  settings: WorkoutSettings | null
   userId: string
-  initialPresets: TimerPreset[]
 }
 
 function CircleTimer({
@@ -68,15 +67,48 @@ function CircleTimer({
   )
 }
 
-export default function TimerPageClient({ settings, userId, initialPresets }: Props) {
+export default function TimerPageClient({ userId }: Props) {
   const { phase, state, remaining, startWork, pauseResume, reset, init, workSec, restSec, setCount } =
     useTimerStore()
 
-  const [localWork, setLocalWork] = useState(settings?.interval_work_sec ?? 30)
-  const [localRest, setLocalRest] = useState(settings?.interval_rest_sec ?? 90)
-  const [reps, setReps] = useState(10)
+  const { data: timerData } = useSWR(
+    `timer-${userId}`,
+    async () => {
+      const supabase = createClient()
+      const [settingsRes, presetsRes] = await Promise.all([
+        supabase.from('workout_settings').select('*').eq('user_id', userId).maybeSingle(),
+        supabase.from('timer_presets').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+      ])
+      return {
+        settings: settingsRes.data ?? null,
+        presets: presetsRes.data ?? [],
+      }
+    },
+    { revalidateOnFocus: false }
+  )
 
-  const [presets, setPresets] = useState<TimerPreset[]>(initialPresets)
+  const [localWork, setLocalWork] = useState(30)
+  const [localRest, setLocalRest] = useState(90)
+  const [reps, setReps] = useState(10)
+  const [presets, setPresets] = useState<TimerPreset[]>([])
+  const initialized = useRef(false)
+
+  useEffect(() => {
+    if (timerData && !initialized.current) {
+      const work = timerData.settings?.interval_work_sec ?? 30
+      const rest = timerData.settings?.interval_rest_sec ?? 90
+      setLocalWork(work)
+      setLocalRest(rest)
+      setPresets(timerData.presets)
+      init(work, rest)
+      initialized.current = true
+    }
+  }, [timerData]) // eslint-disable-line
+
+  useEffect(() => {
+    if (!timerData) init(localWork, localRest)
+  }, []) // eslint-disable-line
+
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
 
   const [showSaveForm, setShowSaveForm] = useState(false)
@@ -85,10 +117,6 @@ export default function TimerPageClient({ settings, userId, initialPresets }: Pr
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    init(localWork, localRest)
-  }, []) // eslint-disable-line
 
   useEffect(() => {
     if (editingPresetId && editInputRef.current) {
