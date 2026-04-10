@@ -27,6 +27,7 @@ export default function CalendarClient({ userId, year, month }: Props) {
   const [thresholds, setThresholds] = useState<MarkerThresholds>({ x: 100, square: 200, triangle: 300 })
   const [showThresholdEditor, setShowThresholdEditor] = useState(false)
   const [thresholdSaved, setThresholdSaved] = useState(false)
+  const [thresholdError, setThresholdError] = useState<string | null>(null)
 
   useEffect(() => {
     setThresholds(getMarkerThresholds())
@@ -39,6 +40,15 @@ export default function CalendarClient({ userId, year, month }: Props) {
   }
 
   function handleSaveThresholds() {
+    if (thresholds.x >= thresholds.square) {
+      setThresholdError('✕ 점수는 □ 점수보다 작아야 합니다.')
+      return
+    }
+    if (thresholds.square >= thresholds.triangle) {
+      setThresholdError('□ 점수는 △ 점수보다 작아야 합니다.')
+      return
+    }
+    setThresholdError(null)
     saveMarkerThresholds(thresholds)
     setThresholdSaved(true)
     setTimeout(() => { setThresholdSaved(false); setShowThresholdEditor(false) }, 1000)
@@ -192,11 +202,14 @@ export default function CalendarClient({ userId, year, month }: Props) {
                     type="number" min={1}
                     className="text-center h-9 px-1 text-sm"
                     value={thresholds[key] || ''}
-                    onChange={(e) => handleThresholdInput(key, e.target.value)}
+                    onChange={(e) => { setThresholdError(null); handleThresholdInput(key, e.target.value) }}
                   />
                 </div>
               ))}
             </div>
+            {thresholdError && (
+              <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{thresholdError}</p>
+            )}
             <Button
               size="sm"
               className={`w-full ${thresholdSaved ? 'bg-green-600 hover:bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
