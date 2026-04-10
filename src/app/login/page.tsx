@@ -17,7 +17,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Workout Mission Tracker</CardTitle>
+          <CardTitle className="text-2xl">Routine Quest</CardTitle>
           <CardDescription>소셜 계정으로 로그인하여 운동을 기록하세요</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
