@@ -33,7 +33,7 @@ function CircleTimer({
   const circumference = 2 * Math.PI * R
 
   const arcRef = useRef<SVGCircleElement>(null)
-  const rafRef = useRef<number>()
+  const rafRef = useRef<number | undefined>(undefined)
   const stateRef = useRef({ remaining, total, phase, tickTime: performance.now() })
 
   useEffect(() => {
