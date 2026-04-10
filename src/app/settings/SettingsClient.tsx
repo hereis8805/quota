@@ -45,7 +45,10 @@ export default function SettingsClient({ userId }: Props) {
 
   const [dragging, setDragging] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
+  const [ghostEx, setGhostEx] = useState<Exercise | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const ghostRef = useRef<HTMLDivElement>(null)
+  const dragMetaRef = useRef({ offsetY: 0, width: 0 })
 
   function getItemIndex(y: number): number | null {
     if (!listRef.current) return null
@@ -161,22 +164,36 @@ export default function SettingsClient({ userId }: Props) {
           <p className="text-zinc-500 text-sm text-center py-6">등록된 항목이 없습니다.</p>
         )}
         {exercises.map((ex, idx) => (
-          <div
-            key={ex.id}
-            data-item
-            className={`rounded-lg transition-all ${dragging === idx ? 'opacity-40' : ''} ${dragOver === idx && dragging !== null && dragging !== idx ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-background' : ''}`}
-          >
-            <Card className={`${!ex.is_active ? 'opacity-50' : ''}`}>
+          <div key={ex.id} data-item className="relative">
+            {dragOver === idx && dragging !== null && dragging !== idx && dragging > idx && (
+              <div className="absolute -top-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full z-10" />
+            )}
+            <Card className={`transition-all duration-150 ${dragging === idx ? 'opacity-20 scale-[0.98]' : ''} ${!ex.is_active && dragging !== idx ? 'opacity-50' : ''}`}>
               <CardContent className="flex items-center gap-2 py-3 px-3">
                 <div
                   className="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 hover:text-zinc-400 px-1 text-xl leading-none"
                   onPointerDown={(e) => {
                     e.currentTarget.setPointerCapture(e.pointerId)
+                    const cardEl = e.currentTarget.closest('[data-item]') as HTMLElement
+                    const rect = cardEl?.getBoundingClientRect()
+                    dragMetaRef.current = {
+                      offsetY: rect ? e.clientY - rect.top : 0,
+                      width: rect ? rect.width : 300,
+                    }
+                    if (ghostRef.current) {
+                      ghostRef.current.style.transform = `translate(${rect?.left ?? 0}px, ${e.clientY - dragMetaRef.current.offsetY}px)`
+                      ghostRef.current.style.width = `${dragMetaRef.current.width}px`
+                    }
+                    setGhostEx(ex)
                     setDragging(idx)
                     setDragOver(idx)
                   }}
                   onPointerMove={(e) => {
                     if (dragging === null) return
+                    if (ghostRef.current) {
+                      const rect = listRef.current?.getBoundingClientRect()
+                      ghostRef.current.style.transform = `translate(${rect?.left ?? 0}px, ${e.clientY - dragMetaRef.current.offsetY}px)`
+                    }
                     const newIdx = getItemIndex(e.clientY)
                     if (newIdx !== null && newIdx !== dragOver) setDragOver(newIdx)
                   }}
@@ -191,8 +208,9 @@ export default function SettingsClient({ userId }: Props) {
                     }
                     setDragging(null)
                     setDragOver(null)
+                    setGhostEx(null)
                   }}
-                  onPointerCancel={() => { setDragging(null); setDragOver(null) }}
+                  onPointerCancel={() => { setDragging(null); setDragOver(null); setGhostEx(null) }}
                 >⠿</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -210,9 +228,36 @@ export default function SettingsClient({ userId }: Props) {
                 </div>
               </CardContent>
             </Card>
+            {dragOver === idx && dragging !== null && dragging !== idx && dragging < idx && (
+              <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full z-10" />
+            )}
           </div>
         ))}
       </div>
+
+      {/* 드래그 ghost — 포인터를 따라다니는 플로팅 카드 */}
+      {ghostEx && (
+        <div
+          ref={ghostRef}
+          className="fixed top-0 left-0 pointer-events-none z-50 will-change-transform"
+          style={{ width: dragMetaRef.current.width }}
+        >
+          <Card className="border-blue-500/60 shadow-2xl shadow-black/60 opacity-80 backdrop-blur-sm">
+            <CardContent className="flex items-center gap-2 py-3 px-3">
+              <div className="text-blue-400 px-1 text-xl leading-none select-none">⠿</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium truncate">{ghostEx.name}</span>
+                  <Badge variant="outline" className={ghostEx.score_per_unit < 0 ? 'text-red-400 border-red-800' : 'text-green-400 border-green-800'}>
+                    {ghostEx.score_per_unit > 0 ? '+' : ''}{ghostEx.score_per_unit}점/회
+                  </Badge>
+                </div>
+                <span className="text-xs text-zinc-500">목표 {ghostEx.daily_target}회</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {showForm && (
         <Card>

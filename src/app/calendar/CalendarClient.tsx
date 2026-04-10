@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
+import { getMarkerThresholds, saveMarkerThresholds, getMarker, getMarkerColor, type MarkerThresholds } from '@/lib/markerThresholds'
+import { Input } from '@/components/ui/input'
 
 interface Summary { date: string; total_score: number }
 interface LogEntry { date: string; exercise_id: string; reps_done: number; score_earned: number }
@@ -19,23 +21,28 @@ interface Props {
   month: number
 }
 
-function getMarker(score: number): string {
-  if (score <= 100) return '✕'
-  if (score <= 200) return '□'
-  if (score <= 300) return '△'
-  return '○'
-}
-
-function getMarkerColor(score: number): string {
-  if (score <= 100) return 'text-red-500'
-  if (score <= 200) return 'text-pink-400'
-  if (score <= 300) return 'text-yellow-400'
-  return 'text-green-400'
-}
-
 export default function CalendarClient({ userId, year, month }: Props) {
   const router = useRouter()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [thresholds, setThresholds] = useState<MarkerThresholds>({ x: 100, square: 200, triangle: 300 })
+  const [showThresholdEditor, setShowThresholdEditor] = useState(false)
+  const [thresholdSaved, setThresholdSaved] = useState(false)
+
+  useEffect(() => {
+    setThresholds(getMarkerThresholds())
+  }, [])
+
+  function handleThresholdInput(key: keyof MarkerThresholds, value: string) {
+    const n = parseInt(value)
+    if (!isNaN(n) && n >= 1) setThresholds((t) => ({ ...t, [key]: n }))
+    else if (value === '') setThresholds((t) => ({ ...t, [key]: 0 }))
+  }
+
+  function handleSaveThresholds() {
+    saveMarkerThresholds(thresholds)
+    setThresholdSaved(true)
+    setTimeout(() => { setThresholdSaved(false); setShowThresholdEditor(false) }, 1000)
+  }
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
   const endDate = `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
@@ -144,8 +151,8 @@ export default function CalendarClient({ userId, year, month }: Props) {
                 <span className={`text-xs leading-none ${isToday ? 'text-blue-400 font-bold' : 'text-zinc-400'}`}>{day}</span>
                 {score !== null && (
                   <>
-                    <span className={`text-sm font-bold leading-none ${getMarkerColor(score)}`}>{getMarker(score)}</span>
-                    <span className={`text-[10px] leading-none ${getMarkerColor(score)}`}>{score > 0 ? '+' : ''}{score}</span>
+                    <span className={`text-sm font-bold leading-none ${getMarkerColor(score, thresholds)}`}>{getMarker(score, thresholds)}</span>
+                    <span className={`text-[10px] leading-none ${getMarkerColor(score, thresholds)}`}>{score > 0 ? '+' : ''}{score}</span>
                   </>
                 )}
               </button>
@@ -154,12 +161,51 @@ export default function CalendarClient({ userId, year, month }: Props) {
         </div>
       )}
 
-      {/* 범례 */}
-      <div className="flex gap-3 mt-4 justify-center text-xs text-zinc-500 flex-wrap">
-        <span><span className="text-red-500">✕</span> ~100점</span>
-        <span><span className="text-pink-400">□</span> ~200점</span>
-        <span><span className="text-yellow-400">△</span> ~300점</span>
-        <span><span className="text-green-400">○</span> 500점+</span>
+      {/* 범례 + 설정 */}
+      <div className="mt-4 flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowThresholdEditor((v) => !v)}
+            className={`text-base leading-none px-1.5 py-1 rounded transition-colors shrink-0 ${showThresholdEditor ? 'text-blue-400 bg-blue-400/10' : 'text-zinc-600 hover:text-zinc-400'}`}
+            aria-label="마커 기준점 설정"
+          >⚙</button>
+          <div className="flex-1 flex gap-3 text-xs text-zinc-500 justify-center flex-wrap">
+            <span><span className="text-red-500">✕</span> ~{thresholds.x}점</span>
+            <span><span className="text-pink-400">□</span> ~{thresholds.square}점</span>
+            <span><span className="text-yellow-400">△</span> ~{thresholds.triangle}점</span>
+            <span><span className="text-green-400">○</span> {thresholds.triangle + 1}점~</span>
+          </div>
+        </div>
+
+        {showThresholdEditor && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex flex-col gap-3">
+            <p className="text-xs text-zinc-500">마커 기준점 (점수 이하)</p>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { key: 'x' as keyof MarkerThresholds, label: '✕', color: 'text-red-500' },
+                { key: 'square' as keyof MarkerThresholds, label: '□', color: 'text-pink-400' },
+                { key: 'triangle' as keyof MarkerThresholds, label: '△', color: 'text-yellow-400' },
+              ]).map(({ key, label, color }) => (
+                <div key={key} className="flex flex-col gap-1">
+                  <label className={`text-xs font-bold text-center ${color}`}>{label}</label>
+                  <Input
+                    type="number" min={1}
+                    className="text-center h-9 px-1 text-sm"
+                    value={thresholds[key] || ''}
+                    onChange={(e) => handleThresholdInput(key, e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              className={`w-full ${thresholdSaved ? 'bg-green-600 hover:bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+              onClick={handleSaveThresholds}
+            >
+              {thresholdSaved ? '저장됨 ✓' : '저장'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* 날짜 상세 팝업 */}
