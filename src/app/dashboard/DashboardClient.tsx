@@ -25,7 +25,7 @@ interface Props {
 
 export default function DashboardClient({ userId }: Props) {
   const router = useRouter()
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 
   const { data: dashData, isLoading } = useSWR(
     `dashboard-${userId}-${today}`,

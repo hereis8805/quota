@@ -38,7 +38,7 @@ export default function CalendarClient({ userId, year, month }: Props) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
 
   const { data, isLoading } = useSWR(
     `calendar-${userId}-${year}-${month}`,
@@ -81,7 +81,7 @@ export default function CalendarClient({ userId, year, month }: Props) {
   const daysInMonth = new Date(year, month, 0).getDate()
   const firstDayOfWeek = new Date(year, month - 1, 1).getDay()
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 
   function getDayLogs(date: string) {
     return logs.filter((l) => l.date === date)
