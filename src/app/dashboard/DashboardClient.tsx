@@ -302,7 +302,9 @@ export default function DashboardClient({ userId }: Props) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm">{ex.name}</span>
-                        {isNegative && <Badge variant="outline" className="text-red-400 border-red-800 text-xs">마이너스</Badge>}
+                        <Badge variant="outline" className={isNegative ? 'text-red-400 border-red-800 text-xs' : 'text-green-400 border-green-800 text-xs'}>
+                          {ex.score_per_unit > 0 ? '+' : ''}{ex.score_per_unit}점/회
+                        </Badge>
                       </div>
                       <span className={`font-bold text-base ${score < 0 ? 'text-red-400' : score > 0 ? 'text-green-400' : 'text-zinc-500'}`}>
                         {score > 0 ? '+' : ''}{score}점
