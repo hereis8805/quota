@@ -252,7 +252,7 @@ export default function DashboardClient({ userId }: Props) {
           <nav className="flex gap-1">
             <Link href="/calendar"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">달력</Button></Link>
             <Link href="/timer"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">타이머</Button></Link>
-            <Link href="/settings"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">운동설정</Button></Link>
+            <Link href="/settings"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">할당량</Button></Link>
             <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2" onClick={handleLogout}>로그아웃</Button>
           </nav>
         </div>
@@ -297,33 +297,32 @@ export default function DashboardClient({ userId }: Props) {
 
             return (
               <button key={ex.id} onClick={() => openExercise(ex)} className="w-full text-left">
-                <Card className={`hover:bg-zinc-800 transition-colors active:scale-[0.98] ${isNegative && done > 0 ? 'border-red-900' : ''}`}>
-                  <CardContent className="py-4 px-5">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-base">{ex.name}</span>
+                <Card className={`transition-colors active:scale-[0.98] bg-zinc-900/50 border-zinc-800/50 hover:bg-zinc-800/60 ${isNegative && done > 0 ? 'border-red-900/60' : ''}`}>
+                  <CardContent className="py-2.5 px-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm">{ex.name}</span>
                         {isNegative && <Badge variant="outline" className="text-red-400 border-red-800 text-xs">마이너스</Badge>}
                       </div>
-                      <span className={`font-bold text-lg ${score < 0 ? 'text-red-400' : score > 0 ? 'text-green-400' : 'text-zinc-500'}`}>
+                      <span className={`font-bold text-base ${score < 0 ? 'text-red-400' : score > 0 ? 'text-green-400' : 'text-zinc-500'}`}>
                         {score > 0 ? '+' : ''}{score}점
                       </span>
                     </div>
                     {isNegative ? (
-                      <p className="text-sm text-zinc-400">{done}회 기록</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">{done}회 기록</p>
                     ) : (
-                      <>
-                        <div className="flex justify-between text-sm text-zinc-400 mb-1">
+                      <div className="mt-1.5">
+                        <div className="flex justify-between text-xs text-zinc-500 mb-1">
                           <span>{done} / {ex.daily_target}회</span>
                           <span>{remaining > 0 ? `${remaining}개 남음` : '완료 ✓'}</span>
                         </div>
-                        <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                        <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? 'bg-green-500' : 'bg-blue-500'}`}
                             style={{ width: `${pct}%` }}
                           />
                         </div>
-                        <p className="text-xs text-zinc-500 mt-1">{pct}% 달성</p>
-                      </>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -357,19 +356,16 @@ export default function DashboardClient({ userId }: Props) {
                 </Button>
               </div>
               <div className="flex flex-col gap-1 max-h-56 overflow-y-auto">
-                {entries.map((entry, i) => (
+                {entries.map((entry) => (
                   <div key={entry.id} className="flex items-center justify-between bg-zinc-900 rounded-lg px-3 py-2">
-                    <span className="text-zinc-400 text-sm">
-                      {new Date(entry.recorded_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <button
+                      className="text-zinc-600 hover:text-red-400 text-lg leading-none transition-colors shrink-0"
+                      onClick={() => handleDeleteEntry(entry)}
+                    >×</button>
                     <span className="font-semibold">{entry.reps}회</span>
-                    <div className="flex items-center gap-2">
-                      {i === 0 && <span className="text-xs text-zinc-600">최근</span>}
-                      <button
-                        className="text-zinc-600 hover:text-red-400 text-lg leading-none transition-colors"
-                        onClick={() => handleDeleteEntry(entry)}
-                      >×</button>
-                    </div>
+                    <span className="text-zinc-400 text-sm">
+                      {new Date(entry.recorded_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -395,7 +391,7 @@ export default function DashboardClient({ userId }: Props) {
                 return (
                   <div key={entry.id} className="flex items-center justify-between bg-zinc-900 rounded-lg px-3 py-2.5">
                     <span className="text-zinc-400 text-sm w-14 shrink-0">
-                      {new Date(entry.recorded_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(entry.recorded_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </span>
                     <span className="flex-1 font-medium px-2">{ex.name}</span>
                     <span className="text-zinc-400 text-sm w-12 text-right shrink-0">{entry.reps}회</span>

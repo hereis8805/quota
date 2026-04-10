@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,6 +43,33 @@ export default function SettingsClient({ userId }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  function getItemIndex(y: number): number | null {
+    if (!listRef.current) return null
+    const items = listRef.current.querySelectorAll('[data-item]')
+    for (let i = 0; i < items.length; i++) {
+      const rect = items[i].getBoundingClientRect()
+      if (y >= rect.top && y < rect.bottom) return i
+    }
+    if (items.length > 0) {
+      if (y >= items[items.length - 1].getBoundingClientRect().bottom) return items.length - 1
+      if (y < items[0].getBoundingClientRect().top) return 0
+    }
+    return null
+  }
+
+  async function saveOrder(updated: Exercise[]) {
+    const supabase = createClient()
+    await Promise.all(
+      updated.map((ex) =>
+        supabase.from('exercises').update({ order_index: ex.order_index }).eq('id', ex.id)
+      )
+    )
+  }
+
   function openAdd() {
     setForm(EMPTY_FORM)
     setEditId(null)
@@ -69,7 +96,7 @@ export default function SettingsClient({ userId }: Props) {
   }
 
   async function handleSave() {
-    if (!form.name.trim()) { setError('운동 이름을 입력하세요.'); return }
+    if (!form.name.trim()) { setError('이름을 입력하세요.'); return }
     if (form.daily_target < 1) { setError('목표 횟수는 1 이상이어야 합니다.'); return }
     if (form.score_per_unit < 1) { setError('점수는 1 이상이어야 합니다.'); return }
 
@@ -126,63 +153,91 @@ export default function SettingsClient({ userId }: Props) {
     <div className="min-h-screen max-w-md mx-auto p-4 flex flex-col gap-4">
       <div className="flex items-center gap-4">
         <Link href="/dashboard" className="text-zinc-400 hover:text-white text-sm">← 대시보드</Link>
-        <h1 className="text-xl font-bold">운동 설정</h1>
+        <h1 className="text-xl font-bold">일일 할당량 설정</h1>
       </div>
 
-      {/* 운동 목록 */}
-      <div className="flex flex-col gap-2">
+      <div ref={listRef} className="flex flex-col gap-2">
         {exercises.length === 0 && !showForm && (
-          <p className="text-zinc-500 text-sm text-center py-6">등록된 운동이 없습니다.</p>
+          <p className="text-zinc-500 text-sm text-center py-6">등록된 항목이 없습니다.</p>
         )}
-        {exercises.map((ex) => (
-          <Card key={ex.id} className={`${!ex.is_active ? 'opacity-50' : ''}`}>
-            <CardContent className="flex items-center gap-3 py-3 px-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium truncate">{ex.name}</span>
-                  <Badge variant="outline" className={ex.score_per_unit < 0 ? 'text-red-400 border-red-800' : 'text-green-400 border-green-800'}>
-                    {ex.score_per_unit > 0 ? '+' : ''}{ex.score_per_unit}점/회
-                  </Badge>
+        {exercises.map((ex, idx) => (
+          <div
+            key={ex.id}
+            data-item
+            className={`rounded-lg transition-all ${dragging === idx ? 'opacity-40' : ''} ${dragOver === idx && dragging !== null && dragging !== idx ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-background' : ''}`}
+          >
+            <Card className={`${!ex.is_active ? 'opacity-50' : ''}`}>
+              <CardContent className="flex items-center gap-2 py-3 px-3">
+                <div
+                  className="cursor-grab active:cursor-grabbing touch-none select-none text-zinc-600 hover:text-zinc-400 px-1 text-xl leading-none"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                    setDragging(idx)
+                    setDragOver(idx)
+                  }}
+                  onPointerMove={(e) => {
+                    if (dragging === null) return
+                    const newIdx = getItemIndex(e.clientY)
+                    if (newIdx !== null && newIdx !== dragOver) setDragOver(newIdx)
+                  }}
+                  onPointerUp={() => {
+                    if (dragging !== null && dragOver !== null && dragging !== dragOver) {
+                      const reordered = [...exercises]
+                      const [removed] = reordered.splice(dragging, 1)
+                      reordered.splice(dragOver, 0, removed)
+                      const updated = reordered.map((e, i) => ({ ...e, order_index: i }))
+                      mutate(updated, false)
+                      saveOrder(updated)
+                    }
+                    setDragging(null)
+                    setDragOver(null)
+                  }}
+                  onPointerCancel={() => { setDragging(null); setDragOver(null) }}
+                >⠿</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{ex.name}</span>
+                    <Badge variant="outline" className={ex.score_per_unit < 0 ? 'text-red-400 border-red-800' : 'text-green-400 border-green-800'}>
+                      {ex.score_per_unit > 0 ? '+' : ''}{ex.score_per_unit}점/회
+                    </Badge>
+                  </div>
+                  <span className="text-xs text-zinc-500">목표 {ex.daily_target}회</span>
                 </div>
-                <span className="text-xs text-zinc-500">목표 {ex.daily_target}회</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={ex.is_active} onCheckedChange={() => handleToggleActive(ex)} />
-                <Button variant="ghost" size="sm" className="text-zinc-400 px-2" onClick={() => openEdit(ex)}>수정</Button>
-                <Button variant="ghost" size="sm" className="text-red-400 px-2" onClick={() => handleDelete(ex.id)}>삭제</Button>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex items-center gap-2">
+                  <Switch checked={ex.is_active} onCheckedChange={() => handleToggleActive(ex)} />
+                  <Button variant="ghost" size="sm" className="text-zinc-400 px-2" onClick={() => openEdit(ex)}>수정</Button>
+                  <Button variant="ghost" size="sm" className="text-red-400 px-2" onClick={() => handleDelete(ex.id)}>삭제</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         ))}
       </div>
 
-      {/* 추가/수정 폼 */}
       {showForm && (
         <Card>
-          <CardHeader><CardTitle className="text-sm">{editId ? '운동 수정' : '운동 추가'}</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">{editId ? '항목 수정' : '항목 추가'}</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-4">
             {error && (
               <p className="text-sm text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
             )}
             <div className="flex flex-col gap-1">
-              <label className="text-sm text-zinc-400">운동 이름</label>
+              <label className="text-sm text-zinc-400">이름</label>
               <Input
-                placeholder="예: 풀업, 술마시기"
+                placeholder="예: 팔굽혀펴기, 스쿼트, 줄넘기"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
 
             <div className="flex gap-3">
-              {/* 일일 목표 */}
               <div className="flex-1 flex flex-col gap-1">
                 <label className="text-sm text-zinc-400">일일 목표 (회)</label>
                 <div className="flex items-center gap-1">
                   <Button variant="outline" className="w-9 h-9 p-0 shrink-0"
                     onClick={() => setForm((f) => ({ ...f, daily_target: Math.max(1, f.daily_target - 1) }))}>−</Button>
                   <Input
-                    type="number"
-                    min={1}
+                    type="number" min={1}
                     className="text-center font-bold text-lg h-9 px-1"
                     value={form.daily_target || ''}
                     onChange={(e) => handleNumberInput('daily_target', e.target.value)}
@@ -191,15 +246,13 @@ export default function SettingsClient({ userId }: Props) {
                     onClick={() => setForm((f) => ({ ...f, daily_target: f.daily_target + 1 }))}>+</Button>
                 </div>
               </div>
-              {/* 점수 */}
               <div className="flex-1 flex flex-col gap-1">
                 <label className="text-sm text-zinc-400">점수/회</label>
                 <div className="flex items-center gap-1">
                   <Button variant="outline" className="w-9 h-9 p-0 shrink-0"
                     onClick={() => setForm((f) => ({ ...f, score_per_unit: Math.max(1, f.score_per_unit - 1) }))}>−</Button>
                   <Input
-                    type="number"
-                    min={1}
+                    type="number" min={1}
                     className="text-center font-bold text-lg h-9 px-1"
                     value={form.score_per_unit || ''}
                     onChange={(e) => handleNumberInput('score_per_unit', e.target.value)}
@@ -210,7 +263,6 @@ export default function SettingsClient({ userId }: Props) {
               </div>
             </div>
 
-            {/* 마이너스 토글 */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">마이너스 항목</p>
@@ -236,7 +288,7 @@ export default function SettingsClient({ userId }: Props) {
 
       {!showForm && (
         <Button size="lg" className="w-full h-14 text-lg" onClick={openAdd}>
-          + 운동 추가
+          + 항목 추가
         </Button>
       )}
     </div>

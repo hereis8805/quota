@@ -16,23 +16,23 @@ export function TimerEngine() {
       if (type === 'TICK') {
         useTimerStore.setState({ remaining, phase })
       } else if (type === 'DONE') {
-        playBeep(phase === 'work' ? 880 : 440, 0.4)
-
         if (phase === 'work') {
-          // 운동 종료 → 세트 카운트 증가
           store.incrementSetCount()
           const { setCount: newSetCount, totalSets, restSec } = useTimerStore.getState()
 
           if (totalSets > 0 && newSetCount >= totalSets) {
-            // 마지막 세트 완료 → 휴식 없이 종료
+            playBeep(880, 0.3)
             useTimerStore.setState({ phase: 'idle', state: 'stopped' })
           } else {
-            // 휴식 자동 시작
+            // 휴식 시작 - 빠르게 두 번
+            playBeep(660, 0.12)
+            setTimeout(() => playBeep(660, 0.12), 200)
             worker.postMessage({ type: 'START', payload: { seconds: restSec, phase: 'rest' } })
             useTimerStore.setState({ phase: 'rest', state: 'running', remaining: restSec })
           }
         } else if (phase === 'rest') {
-          // 휴식 종료 → 운동 자동 시작
+          // 운동 시작 - 한 번
+          playBeep(880, 0.2)
           worker.postMessage({ type: 'START', payload: { seconds: store.workSec, phase: 'work' } })
           useTimerStore.setState({ phase: 'work', state: 'running', remaining: store.workSec })
         }
@@ -50,7 +50,7 @@ export function TimerEngine() {
   return null
 }
 
-function playBeep(frequency: number, duration: number) {
+export function playBeep(frequency: number, duration: number) {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
     const osc = ctx.createOscillator()

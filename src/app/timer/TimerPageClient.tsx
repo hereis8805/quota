@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useTimerStore } from '@/store/timerStore'
-import { TimerEngine } from '@/components/TimerEngine'
+import { TimerEngine, playBeep } from '@/components/TimerEngine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
@@ -18,22 +18,71 @@ function CircleTimer({
   remaining,
   total,
   phase,
+  isPaused,
   setNum,
 }: {
   remaining: number
   total: number
   phase: string
+  isPaused: boolean
   setNum: number
 }) {
   const SIZE = 220
   const STROKE = 10
   const R = (SIZE - STROKE) / 2
   const circumference = 2 * Math.PI * R
-  const progress = total > 0 ? Math.max(0, remaining / total) : 1
-  const dashOffset = circumference * (1 - progress)
+
+  const arcRef = useRef<SVGCircleElement>(null)
+  const rafRef = useRef<number>()
+  const stateRef = useRef({ remaining, total, phase, tickTime: performance.now() })
+
+  useEffect(() => {
+    stateRef.current.tickTime = performance.now()
+    stateRef.current.remaining = remaining
+  }, [remaining])
+
+  useEffect(() => {
+    stateRef.current.total = total
+    stateRef.current.phase = phase
+  }, [total, phase])
+
+  const shouldAnimate = phase !== 'idle' && !isPaused
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      // 멈춤: 현재 위치 고정
+      if (arcRef.current) {
+        const r = stateRef.current.remaining
+        const t = stateRef.current.total
+        const p = stateRef.current.phase
+        const progress = t > 0 ? r / t : 1
+        arcRef.current.style.strokeDashoffset = String(
+          p === 'rest' ? circumference * progress : circumference * (1 - progress)
+        )
+      }
+      return
+    }
+    stateRef.current.tickTime = performance.now()
+    function frame() {
+      const { remaining: r, total: t, phase: p, tickTime } = stateRef.current
+      const elapsed = (performance.now() - tickTime) / 1000
+      const smooth = Math.max(0, r - elapsed)
+      const progress = t > 0 ? smooth / t : 1
+      const dashOffset = p === 'rest'
+        ? circumference * progress
+        : circumference * (1 - progress)
+      if (arcRef.current) {
+        arcRef.current.style.strokeDashoffset = String(dashOffset)
+      }
+      rafRef.current = requestAnimationFrame(frame)
+    }
+    rafRef.current = requestAnimationFrame(frame)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [shouldAnimate, circumference])
 
   const arcColor = phase === 'work' ? '#22c55e' : phase === 'rest' ? '#3b82f6' : '#52525b'
   const numColor = phase === 'work' ? '#22c55e' : phase === 'rest' ? '#60a5fa' : '#52525b'
+  const phaseLabel = phase === 'work' ? '운동' : phase === 'rest' ? '휴식' : ''
 
   const minutes = Math.floor(remaining / 60)
   const seconds = remaining % 60
@@ -44,14 +93,20 @@ function CircleTimer({
       <svg width={SIZE} height={SIZE} style={{ transform: 'rotate(-90deg)', position: 'absolute' }}>
         <circle cx={SIZE / 2} cy={SIZE / 2} r={R} fill="none" stroke="#27272a" strokeWidth={STROKE} />
         <circle
+          ref={arcRef}
           cx={SIZE / 2} cy={SIZE / 2} r={R}
           fill="none" stroke={arcColor} strokeWidth={STROKE}
-          strokeDasharray={circumference} strokeDashoffset={dashOffset}
+          strokeDasharray={circumference}
           strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s ease' }}
+          style={{ transition: 'stroke 0.3s ease' }}
         />
       </svg>
       <div className="absolute flex flex-col items-center gap-0.5">
+        {phaseLabel ? (
+          <span className="text-xs font-medium tracking-widest uppercase" style={{ color: numColor }}>{phaseLabel}</span>
+        ) : (
+          <span className="text-xs text-transparent select-none">—</span>
+        )}
         {setNum > 0 ? (
           <span className="font-bold leading-none" style={{ fontSize: 52, color: numColor }}>
             {setNum}
@@ -139,6 +194,7 @@ export default function TimerPageClient({ userId }: Props) {
     if (isIdle) {
       init(localWork, localRest, reps)
       startWork()
+      playBeep(880, 0.2)
     } else {
       pauseResume()
     }
@@ -154,6 +210,10 @@ export default function TimerPageClient({ userId }: Props) {
     setLocalWork(preset.work_sec)
     setLocalRest(preset.rest_sec)
     setReps(preset.reps)
+    if (!isIdle) {
+      reset()
+      init(preset.work_sec, preset.rest_sec)
+    }
   }
 
   async function handleSavePreset() {
@@ -209,7 +269,7 @@ export default function TimerPageClient({ userId }: Props) {
 
       {/* 원형 타이머 */}
       <div className="flex justify-center py-2">
-        <CircleTimer remaining={remaining} total={getTotalSec()} phase={phase} setNum={displaySetNum} />
+        <CircleTimer remaining={remaining} total={getTotalSec()} phase={phase} isPaused={state === 'paused'} setNum={displaySetNum} />
       </div>
 
       {/* 설정 섹션 */}
@@ -325,14 +385,14 @@ export default function TimerPageClient({ userId }: Props) {
                 {/* 이름 편집 버튼 */}
                 {!isEditing ? (
                   <button
-                    className="text-zinc-600 hover:text-zinc-300 text-sm shrink-0 px-0.5"
+                    className="text-zinc-600 hover:text-zinc-300 text-xs shrink-0 px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
                     onClick={(e) => { e.stopPropagation(); setEditingPresetId(preset.id); setEditingName(preset.name) }}
-                  >✏</button>
+                  >수정</button>
                 ) : (
                   <button
-                    className="text-green-500 text-base shrink-0 px-0.5"
+                    className="text-green-400 text-xs shrink-0 px-1.5 py-0.5 rounded border border-green-800 hover:border-green-600 transition-colors"
                     onClick={(e) => { e.stopPropagation(); handleRenamePreset(preset.id) }}
-                  >✓</button>
+                  >저장</button>
                 )}
 
                 {/* 삭제 버튼 */}
