@@ -31,7 +31,7 @@ export function TimerEngine() {
             useTimerStore.setState({ phase: 'rest', state: 'running', remaining: restSec })
           }
         } else if (phase === 'rest') {
-          // 운동 시작 - 한 번
+          // 수행 시작 - 한 번
           playBeep(880, 0.2)
           worker.postMessage({ type: 'START', payload: { seconds: store.workSec, phase: 'work' } })
           useTimerStore.setState({ phase: 'work', state: 'running', remaining: store.workSec })

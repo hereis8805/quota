@@ -277,13 +277,13 @@ export default function DashboardClient({ userId }: Props) {
         </Card>
       </div>
 
-      {/* ── 스크롤 운동 리스트 ── */}
+      {/* ── 스크롤 할당량 리스트 ── */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
         {exercises.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-zinc-400">
-              <p>등록된 운동이 없습니다.</p>
-              <Link href="/settings" className="text-blue-400 underline mt-2 block">운동 설정하기</Link>
+              <p>등록된 할당량이 없습니다.</p>
+              <Link href="/settings" className="text-blue-400 underline mt-2 block">할당량 추가하기</Link>
             </CardContent>
           </Card>
         ) : (
@@ -334,7 +334,7 @@ export default function DashboardClient({ userId }: Props) {
 
       {/* ── 다이얼로그들 ── */}
 
-      {/* 운동별 기록 */}
+      {/* 할당량별 기록 */}
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>{selected?.name}</DialogTitle></DialogHeader>
@@ -377,7 +377,7 @@ export default function DashboardClient({ userId }: Props) {
       {/* 하루 전체 기록 */}
       <Dialog open={showDayDetail} onOpenChange={setShowDayDetail}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>오늘 운동 기록</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>오늘 할당량 기록</DialogTitle></DialogHeader>
           {dayLoading ? (
             <p className="text-center text-zinc-400 py-4">로딩 중...</p>
           ) : dayEntries.length === 0 ? (
@@ -416,7 +416,7 @@ export default function DashboardClient({ userId }: Props) {
       <Dialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
         <DialogContent className="max-w-xs">
           <DialogHeader><DialogTitle>오늘 기록 초기화</DialogTitle></DialogHeader>
-          <p className="text-zinc-400 text-sm">오늘의 모든 운동 기록과 점수가 삭제됩니다.</p>
+          <p className="text-zinc-400 text-sm">오늘의 모든 할당량 기록과 점수가 삭제됩니다.</p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" className="flex-1" onClick={() => setShowResetConfirm(false)}>취소</Button>
             <Button className="flex-1 bg-red-700 hover:bg-red-800" onClick={handleResetToday}>초기화</Button>

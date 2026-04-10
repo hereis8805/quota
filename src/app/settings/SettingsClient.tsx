@@ -269,7 +269,7 @@ export default function SettingsClient({ userId }: Props) {
             <div className="flex flex-col gap-1">
               <label className="text-sm text-zinc-400">이름</label>
               <Input
-                placeholder="예: 영단어 외우기, 스쿼트, 계단이용하기"
+                placeholder="예: 영단어 외우기, 스쿼트, 만보걷기"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />

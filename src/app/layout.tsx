@@ -6,7 +6,7 @@ const geist = Geist({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Routine Quest',
-  description: '개인 운동 목표 관리 앱',
+  description: '개인 루틴 관리 앱',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

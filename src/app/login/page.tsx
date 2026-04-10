@@ -18,7 +18,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Routine Quest</CardTitle>
-          <CardDescription>카카오 계정으로 로그인하여 운동을 기록하세요</CardDescription>
+          <CardDescription>카카오 계정으로 로그인하여 할당량을 기록하세요</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <Button

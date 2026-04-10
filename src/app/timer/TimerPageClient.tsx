@@ -82,7 +82,7 @@ function CircleTimer({
 
   const arcColor = phase === 'work' ? '#22c55e' : phase === 'rest' ? '#3b82f6' : '#52525b'
   const numColor = phase === 'work' ? '#22c55e' : phase === 'rest' ? '#60a5fa' : '#52525b'
-  const phaseLabel = phase === 'work' ? '운동' : phase === 'rest' ? '휴식' : ''
+  const phaseLabel = phase === 'work' ? '수행' : phase === 'rest' ? '휴식' : ''
 
   const minutes = Math.floor(remaining / 60)
   const seconds = remaining % 60
@@ -275,7 +275,7 @@ export default function TimerPageClient({ userId }: Props) {
       {/* 설정 섹션 */}
       <div className="bg-zinc-900 rounded-2xl p-4 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <span className="text-sm text-zinc-400 w-20">운동 시간</span>
+          <span className="text-sm text-zinc-400 w-20">작업 시간</span>
           <div className="flex items-center gap-2">
             <Button variant="outline" className="w-9 h-9 p-0" disabled={!isIdle}
               onClick={() => setLocalWork((v) => Math.max(5, v - 5))}>−</Button>
@@ -378,7 +378,7 @@ export default function TimerPageClient({ userId }: Props) {
                     <p className="text-sm font-semibold truncate">{preset.name}</p>
                   )}
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    운동 {preset.work_sec}초 · 휴식 {preset.rest_sec}초 · {preset.reps}회
+                    수행 {preset.work_sec}초 · 휴식 {preset.rest_sec}초 · {preset.reps}회
                   </p>
                 </div>
 
