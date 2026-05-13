@@ -1,19 +1,14 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import useSWR from 'swr'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import type { Exercise } from '@/types'
+import { getExercises, saveExercises } from '@/lib/storage'
 import Link from 'next/link'
-
-interface Props {
-  userId: string
-}
 
 const EMPTY_FORM = {
   name: '',
@@ -22,20 +17,17 @@ const EMPTY_FORM = {
   is_negative: false,
 }
 
-export default function SettingsClient({ userId }: Props) {
-  const { data: exercises = [], mutate, isLoading } = useSWR(
-    `settings-exercises-${userId}`,
-    async () => {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('exercises')
-        .select('*')
-        .eq('user_id', userId)
-        .order('order_index', { ascending: true })
-      return data ?? []
-    },
-    { revalidateOnFocus: false }
-  )
+export default function SettingsClient() {
+  const [exercises, setExercises] = useState<Exercise[]>([])
+
+  useEffect(() => {
+    setExercises(getExercises())
+  }, [])
+
+  function persist(updated: Exercise[]) {
+    saveExercises(updated)
+    setExercises(updated)
+  }
 
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -64,15 +56,6 @@ export default function SettingsClient({ userId }: Props) {
     return null
   }
 
-  async function saveOrder(updated: Exercise[]) {
-    const supabase = createClient()
-    await Promise.all(
-      updated.map((ex) =>
-        supabase.from('exercises').update({ order_index: ex.order_index }).eq('id', ex.id)
-      )
-    )
-  }
-
   function openAdd() {
     setForm(EMPTY_FORM)
     setEditId(null)
@@ -98,14 +81,13 @@ export default function SettingsClient({ userId }: Props) {
     else if (value === '') setForm((f) => ({ ...f, [key]: 0 }))
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!form.name.trim()) { setError('이름을 입력하세요.'); return }
     if (form.daily_target < 1) { setError('목표 횟수는 1 이상이어야 합니다.'); return }
     if (form.score_per_unit < 1) { setError('점수는 1 이상이어야 합니다.'); return }
 
     setSaving(true)
     setError(null)
-    const supabase = createClient()
 
     const payload = {
       name: form.name.trim(),
@@ -114,17 +96,17 @@ export default function SettingsClient({ userId }: Props) {
     }
 
     if (editId) {
-      const { data, error: err } = await supabase
-        .from('exercises').update(payload).eq('id', editId).select().single()
-      if (err) { setError(err.message); setSaving(false); return }
-      if (data) mutate(exercises.map((e) => (e.id === editId ? data : e)), false)
+      persist(exercises.map((e) => e.id === editId ? { ...e, ...payload } : e))
     } else {
-      const { data, error: err } = await supabase
-        .from('exercises')
-        .insert({ ...payload, user_id: userId, order_index: exercises.length })
-        .select().single()
-      if (err) { setError(err.message); setSaving(false); return }
-      if (data) mutate([...exercises, data], false)
+      const newEx: Exercise = {
+        id: crypto.randomUUID(),
+        user_id: 'local',
+        ...payload,
+        order_index: exercises.length,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      }
+      persist([...exercises, newEx])
     }
 
     setSaving(false)
@@ -132,24 +114,12 @@ export default function SettingsClient({ userId }: Props) {
     setEditId(null)
   }
 
-  async function handleDelete(id: string) {
-    const supabase = createClient()
-    await supabase.from('exercises').delete().eq('id', id)
-    mutate(exercises.filter((e) => e.id !== id), false)
+  function handleDelete(id: string) {
+    persist(exercises.filter((e) => e.id !== id))
   }
 
-  async function handleToggleActive(ex: Exercise) {
-    const supabase = createClient()
-    await supabase.from('exercises').update({ is_active: !ex.is_active }).eq('id', ex.id)
-    mutate(exercises.map((e) => e.id === ex.id ? { ...e, is_active: !e.is_active } : e), false)
-  }
-
-  if (isLoading && exercises.length === 0) {
-    return (
-      <div className="min-h-screen max-w-md mx-auto flex items-center justify-center">
-        <p className="text-zinc-500 text-sm animate-pulse">로딩 중...</p>
-      </div>
-    )
+  function handleToggleActive(ex: Exercise) {
+    persist(exercises.map((e) => e.id === ex.id ? { ...e, is_active: !e.is_active } : e))
   }
 
   return (
@@ -203,8 +173,7 @@ export default function SettingsClient({ userId }: Props) {
                       const [removed] = reordered.splice(dragging, 1)
                       reordered.splice(dragOver, 0, removed)
                       const updated = reordered.map((e, i) => ({ ...e, order_index: i }))
-                      mutate(updated, false)
-                      saveOrder(updated)
+                      persist(updated)
                     }
                     setDragging(null)
                     setDragOver(null)
@@ -235,7 +204,7 @@ export default function SettingsClient({ userId }: Props) {
         ))}
       </div>
 
-      {/* 드래그 ghost — 포인터를 따라다니는 플로팅 카드 */}
+      {/* 드래그 ghost */}
       {ghostEx && (
         <div
           ref={ghostRef}

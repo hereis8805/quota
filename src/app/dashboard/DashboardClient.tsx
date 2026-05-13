@@ -1,93 +1,48 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import useSWR from 'swr'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import type { Exercise, DailyExerciseLog, DailyScoreSummary } from '@/types'
+import type { Exercise, DailyExerciseLog } from '@/types'
+import {
+  getExercises,
+  getEntries,
+  addEntry,
+  deleteEntry as storageDeleteEntry,
+  resetDay,
+  computeLogs,
+  type ExerciseEntry,
+} from '@/lib/storage'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 
-interface ExerciseEntry {
-  id: string
-  exercise_id: string
-  reps: number
-  recorded_at: string
-}
-
-interface Props {
-  userId: string
-}
-
-export default function DashboardClient({ userId }: Props) {
-  const router = useRouter()
+export default function DashboardClient() {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 
-  const { data: dashData, isLoading } = useSWR(
-    `dashboard-${userId}-${today}`,
-    async () => {
-      const supabase = createClient()
-      const [exercisesRes, logsRes, summaryRes] = await Promise.all([
-        supabase
-          .from('exercises')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .order('order_index', { ascending: true }),
-        supabase
-          .from('daily_exercise_logs')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('date', today),
-        supabase
-          .from('daily_score_summary')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('date', today)
-          .maybeSingle(),
-      ])
-      return {
-        exercises: exercisesRes.data ?? [],
-        logs: logsRes.data ?? [],
-        summary: summaryRes.data ?? null,
-      }
-    },
-    { revalidateOnFocus: false }
-  )
-
+  const [exercises, setExercises] = useState<Exercise[]>([])
   const [logs, setLogs] = useState<DailyExerciseLog[]>([])
   const [totalScore, setTotalScore] = useState(0)
-  const initialized = useRef(false)
+
+  function refresh(exs?: Exercise[]) {
+    const allExs = exs ?? exercises
+    const newLogs = computeLogs(today, allExs)
+    const newTotal = newLogs.reduce((sum, l) => sum + l.score_earned, 0)
+    setLogs(newLogs)
+    setTotalScore(newTotal)
+  }
 
   useEffect(() => {
-    if (dashData && !initialized.current) {
-      setLogs(dashData.logs)
-      setTotalScore(dashData.summary?.total_score ?? 0)
-      initialized.current = true
-    }
-  }, [dashData])
+    const allExs = getExercises()
+    setExercises(allExs)
+    refresh(allExs)
+  }, []) // eslint-disable-line
 
-  const exercises: Exercise[] = dashData?.exercises ?? []
-
-  const [selected, setSelected] = useState<Exercise | null>(null)
-  const [entries, setEntries] = useState<ExerciseEntry[]>([])
-  const [repsInput, setRepsInput] = useState('1')
-  const [saving, setSaving] = useState(false)
-
-  const [showDayDetail, setShowDayDetail] = useState(false)
-  const [dayEntries, setDayEntries] = useState<ExerciseEntry[]>([])
-  const [dayLoading, setDayLoading] = useState(false)
-
-  const [showResetConfirm, setShowResetConfirm] = useState(false)
-
+  const activeExercises = exercises.filter((e) => e.is_active)
   const exerciseMap = new Map(exercises.map((e) => [e.id, e]))
 
-  // 마이너스 항목 맨 뒤로
-  const sortedExercises = [...exercises].sort((a, b) => {
+  const sortedExercises = [...activeExercises].sort((a, b) => {
     const aIsNeg = a.score_per_unit < 0 ? 1 : 0
     const bIsNeg = b.score_per_unit < 0 ? 1 : 0
     if (aIsNeg !== bIsNeg) return aIsNeg - bIsNeg
@@ -98,149 +53,60 @@ export default function DashboardClient({ userId }: Props) {
     return logs.find((l) => l.exercise_id === exerciseId)
   }
 
-  async function openExercise(ex: Exercise) {
+  const [selected, setSelected] = useState<Exercise | null>(null)
+  const [entries, setEntries] = useState<ExerciseEntry[]>([])
+  const [repsInput, setRepsInput] = useState('1')
+  const [saving, setSaving] = useState(false)
+
+  const [showDayDetail, setShowDayDetail] = useState(false)
+  const [dayEntries, setDayEntries] = useState<ExerciseEntry[]>([])
+
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+
+  function openExercise(ex: Exercise) {
     setSelected(ex)
     setRepsInput('1')
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('exercise_entries')
-      .select('id, exercise_id, reps, recorded_at')
-      .eq('user_id', userId)
-      .eq('exercise_id', ex.id)
-      .eq('date', today)
-      .order('recorded_at', { ascending: false })
-    setEntries(data ?? [])
+    const all = getEntries(today)
+    setEntries(all.filter((e) => e.exercise_id === ex.id).reverse())
   }
 
-  async function openDayDetail() {
+  function openDayDetail() {
     setShowDayDetail(true)
-    setDayLoading(true)
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('exercise_entries')
-      .select('id, exercise_id, reps, recorded_at')
-      .eq('user_id', userId)
-      .eq('date', today)
-      .order('recorded_at', { ascending: true })
-    setDayEntries(data ?? [])
-    setDayLoading(false)
+    setDayEntries(getEntries(today))
   }
 
-  async function handleLog() {
+  function handleLog() {
     if (!selected || saving) return
     const reps = parseInt(repsInput)
     if (isNaN(reps) || reps < 1) return
     setSaving(true)
 
-    const supabase = createClient()
-    await supabase.from('exercise_entries').insert({
-      user_id: userId, exercise_id: selected.id, date: today, reps,
-    })
+    addEntry(today, selected.id, reps)
+    refresh()
 
-    const existingLog = getLog(selected.id)
-    const newReps = (existingLog?.reps_done ?? 0) + reps
-    const newScore = newReps * selected.score_per_unit
-
-    const { data: updatedLog } = await supabase
-      .from('daily_exercise_logs')
-      .upsert({
-        id: existingLog?.id,
-        user_id: userId,
-        exercise_id: selected.id,
-        date: today,
-        reps_done: newReps,
-        score_earned: newScore,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,exercise_id,date' })
-      .select().single()
-
-    if (updatedLog) {
-      setLogs((prev) => {
-        const exists = prev.find((l) => l.exercise_id === selected.id)
-        return exists
-          ? prev.map((l) => l.exercise_id === selected.id ? updatedLog : l)
-          : [...prev, updatedLog]
-      })
-    }
-
-    const allLogs = logs.map((l) =>
-      l.exercise_id === selected.id ? { ...l, score_earned: newScore } : l
-    )
-    if (!existingLog) allLogs.push({ exercise_id: selected.id, score_earned: newScore } as DailyExerciseLog)
-    const newTotal = allLogs.reduce((sum, l) => sum + l.score_earned, 0)
-
-    await supabase.from('daily_score_summary').upsert({
-      user_id: userId, date: today, total_score: newTotal,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,date' })
-    setTotalScore(newTotal)
+    const all = getEntries(today)
+    setEntries(all.filter((e) => e.exercise_id === selected.id).reverse())
 
     setRepsInput('1')
     setSaving(false)
     setSelected(null)
   }
 
-  async function handleDeleteEntry(entry: ExerciseEntry) {
+  function handleDeleteEntry(entry: ExerciseEntry) {
     if (!selected) return
-    const supabase = createClient()
-
-    await supabase.from('exercise_entries').delete().eq('id', entry.id)
-
-    const existingLog = getLog(selected.id)
-    const newReps = Math.max(0, (existingLog?.reps_done ?? 0) - entry.reps)
-    const newScore = newReps * selected.score_per_unit
-
-    let newLogs: DailyExerciseLog[]
-    if (newReps === 0) {
-      await supabase.from('daily_exercise_logs')
-        .delete().eq('user_id', userId).eq('exercise_id', selected.id).eq('date', today)
-      newLogs = logs.filter((l) => l.exercise_id !== selected.id)
-    } else {
-      await supabase.from('daily_exercise_logs')
-        .update({ reps_done: newReps, score_earned: newScore, updated_at: new Date().toISOString() })
-        .eq('user_id', userId).eq('exercise_id', selected.id).eq('date', today)
-      newLogs = logs.map((l) => l.exercise_id === selected.id ? { ...l, reps_done: newReps, score_earned: newScore } : l)
-    }
-    setLogs(newLogs)
-
-    const newTotal = newLogs.reduce((sum, l) => sum + l.score_earned, 0)
-    await supabase.from('daily_score_summary').upsert({
-      user_id: userId, date: today, total_score: newTotal,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,date' })
-    setTotalScore(newTotal)
-
+    storageDeleteEntry(today, entry.id)
+    refresh()
     setEntries((prev) => prev.filter((e) => e.id !== entry.id))
   }
 
-  async function handleResetToday() {
-    const supabase = createClient()
-    await Promise.all([
-      supabase.from('exercise_entries').delete().eq('user_id', userId).eq('date', today),
-      supabase.from('daily_exercise_logs').delete().eq('user_id', userId).eq('date', today),
-      supabase.from('daily_score_summary').delete().eq('user_id', userId).eq('date', today),
-    ])
+  function handleResetToday() {
+    resetDay(today)
     setLogs([])
     setTotalScore(0)
     setShowResetConfirm(false)
-    router.refresh()
-  }
-
-  async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    window.location.href = '/login'
   }
 
   const todayStr = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
-
-  if (isLoading && !dashData) {
-    return (
-      <div className="h-screen max-w-md mx-auto flex items-center justify-center">
-        <p className="text-zinc-500 text-sm animate-pulse">로딩 중...</p>
-      </div>
-    )
-  }
 
   return (
     <div className="h-screen max-w-md mx-auto flex flex-col overflow-hidden">
@@ -253,7 +119,6 @@ export default function DashboardClient({ userId }: Props) {
             <Link href="/calendar"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">달력</Button></Link>
             <Link href="/timer"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">타이머</Button></Link>
             <Link href="/settings"><Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2">할당량</Button></Link>
-            <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white px-2" onClick={handleLogout}>로그아웃</Button>
           </nav>
         </div>
 
@@ -279,7 +144,7 @@ export default function DashboardClient({ userId }: Props) {
 
       {/* ── 스크롤 할당량 리스트 ── */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
-        {exercises.length === 0 ? (
+        {activeExercises.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-zinc-400">
               <p>등록된 할당량이 없습니다.</p>
@@ -380,9 +245,7 @@ export default function DashboardClient({ userId }: Props) {
       <Dialog open={showDayDetail} onOpenChange={setShowDayDetail}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>오늘 할당량 기록</DialogTitle></DialogHeader>
-          {dayLoading ? (
-            <p className="text-center text-zinc-400 py-4">로딩 중...</p>
-          ) : dayEntries.length === 0 ? (
+          {dayEntries.length === 0 ? (
             <p className="text-center text-zinc-500 py-4">아직 기록이 없습니다.</p>
           ) : (
             <div className="flex flex-col gap-1.5 max-h-96 overflow-y-auto">

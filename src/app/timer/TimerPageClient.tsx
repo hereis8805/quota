@@ -1,18 +1,18 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import useSWR from 'swr'
 import { useTimerStore } from '@/store/timerStore'
 import { TimerEngine, playBeep } from '@/components/TimerEngine'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { createClient } from '@/lib/supabase/client'
 import type { TimerPreset } from '@/types'
+import {
+  getTimerPresets,
+  saveTimerPresets,
+  getTimerSettings,
+  saveTimerSettings,
+} from '@/lib/storage'
 import Link from 'next/link'
-
-interface Props {
-  userId: string
-}
 
 function CircleTimer({
   remaining,
@@ -50,7 +50,6 @@ function CircleTimer({
 
   useEffect(() => {
     if (!shouldAnimate) {
-      // 멈춤: 현재 위치 고정
       if (arcRef.current) {
         const r = stateRef.current.remaining
         const t = stateRef.current.total
@@ -122,25 +121,9 @@ function CircleTimer({
   )
 }
 
-export default function TimerPageClient({ userId }: Props) {
+export default function TimerPageClient() {
   const { phase, state, remaining, startWork, pauseResume, reset, init, workSec, restSec, setCount } =
     useTimerStore()
-
-  const { data: timerData } = useSWR(
-    `timer-${userId}`,
-    async () => {
-      const supabase = createClient()
-      const [settingsRes, presetsRes] = await Promise.all([
-        supabase.from('workout_settings').select('*').eq('user_id', userId).maybeSingle(),
-        supabase.from('timer_presets').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-      ])
-      return {
-        settings: settingsRes.data ?? null,
-        presets: presetsRes.data ?? [],
-      }
-    },
-    { revalidateOnFocus: false }
-  )
 
   const [localWork, setLocalWork] = useState(30)
   const [localRest, setLocalRest] = useState(90)
@@ -149,26 +132,19 @@ export default function TimerPageClient({ userId }: Props) {
   const initialized = useRef(false)
 
   useEffect(() => {
-    if (timerData && !initialized.current) {
-      const work = timerData.settings?.interval_work_sec ?? 30
-      const rest = timerData.settings?.interval_rest_sec ?? 90
-      setLocalWork(work)
-      setLocalRest(rest)
-      setPresets(timerData.presets)
-      init(work, rest)
-      initialized.current = true
-    }
-  }, [timerData]) // eslint-disable-line
-
-  useEffect(() => {
-    if (!timerData) init(localWork, localRest)
+    if (initialized.current) return
+    const settings = getTimerSettings()
+    const savedPresets = getTimerPresets()
+    setLocalWork(settings.work_sec)
+    setLocalRest(settings.rest_sec)
+    setPresets(savedPresets)
+    init(settings.work_sec, settings.rest_sec)
+    initialized.current = true
   }, []) // eslint-disable-line
 
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
-
   const [showSaveForm, setShowSaveForm] = useState(false)
   const [saveNameInput, setSaveNameInput] = useState('')
-
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -216,35 +192,38 @@ export default function TimerPageClient({ userId }: Props) {
     }
   }
 
-  async function handleSavePreset() {
+  function handleSavePreset() {
     const name = saveNameInput.trim() || `루틴 ${presets.length + 1}`
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('timer_presets')
-      .insert({ user_id: userId, name, work_sec: localWork, rest_sec: localRest, reps })
-      .select()
-      .single()
-    if (data) {
-      setPresets((prev) => [...prev, data])
-      setSelectedPresetId(data.id)
+    const newPreset: TimerPreset = {
+      id: crypto.randomUUID(),
+      user_id: 'local',
+      name,
+      work_sec: localWork,
+      rest_sec: localRest,
+      reps,
+      created_at: new Date().toISOString(),
     }
+    const updated = [...presets, newPreset]
+    saveTimerPresets(updated)
+    setPresets(updated)
+    setSelectedPresetId(newPreset.id)
     setShowSaveForm(false)
     setSaveNameInput('')
   }
 
-  async function handleRenamePreset(id: string) {
+  function handleRenamePreset(id: string) {
     const name = editingName.trim()
     if (!name) { setEditingPresetId(null); return }
-    const supabase = createClient()
-    await supabase.from('timer_presets').update({ name }).eq('id', id)
-    setPresets((prev) => prev.map((p) => p.id === id ? { ...p, name } : p))
+    const updated = presets.map((p) => p.id === id ? { ...p, name } : p)
+    saveTimerPresets(updated)
+    setPresets(updated)
     setEditingPresetId(null)
   }
 
-  async function handleDeletePreset(id: string) {
-    const supabase = createClient()
-    await supabase.from('timer_presets').delete().eq('id', id)
-    setPresets((prev) => prev.filter((p) => p.id !== id))
+  function handleDeletePreset(id: string) {
+    const updated = presets.filter((p) => p.id !== id)
+    saveTimerPresets(updated)
+    setPresets(updated)
     if (selectedPresetId === id) setSelectedPresetId(null)
   }
 
@@ -356,11 +335,9 @@ export default function TimerPageClient({ userId }: Props) {
                   ${isSelected ? 'bg-zinc-700 ring-1 ring-zinc-500' : 'bg-zinc-900 hover:bg-zinc-800'}`}
                 onClick={() => { if (!isEditing) handleSelectPreset(preset) }}
               >
-                {/* 선택 표시 */}
                 <div className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 transition-colors
                   ${isSelected ? 'border-green-400 bg-green-400' : 'border-zinc-600'}`} />
 
-                {/* 이름 + 세팅 정보 */}
                 <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
                   {isEditing ? (
                     <input
@@ -382,7 +359,6 @@ export default function TimerPageClient({ userId }: Props) {
                   </p>
                 </div>
 
-                {/* 이름 편집 버튼 */}
                 {!isEditing ? (
                   <button
                     className="text-zinc-600 hover:text-zinc-300 text-xs shrink-0 px-1.5 py-0.5 rounded border border-zinc-700 hover:border-zinc-500 transition-colors"
@@ -395,7 +371,6 @@ export default function TimerPageClient({ userId }: Props) {
                   >저장</button>
                 )}
 
-                {/* 삭제 버튼 */}
                 <button
                   className="text-zinc-600 hover:text-red-400 text-lg shrink-0 leading-none"
                   onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id) }}
